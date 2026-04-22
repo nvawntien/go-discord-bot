@@ -24,7 +24,7 @@ type dailyQuestionResponse struct {
 // userProfileResponse is the top-level response for the user profile query.
 type userProfileResponse struct {
 	Data struct {
-		MatchedUser struct {
+		MatchedUser *struct {
 			Username string `json:"username"`
 			Profile  struct {
 				RealName string `json:"realName"`
@@ -38,6 +38,9 @@ type userProfileResponse struct {
 			} `json:"submitStatsGlobal"`
 		} `json:"matchedUser"`
 	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
 }
 
 // recentSubmissionsResponse is the top-level response for the recent submissions query.

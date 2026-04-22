@@ -29,15 +29,15 @@ func NewGetStatsUseCase(userRepo outbound.UserRepository, lc outbound.LeetCodeCl
 // If username is empty, it looks up the registered username for the Discord user.
 func (uc *GetStatsUseCase) GetUserStats(ctx context.Context, discordID, guildID, username string) (*entity.UserStats, error) {
 	if username == "" {
-		// Look up registered user
-		user, err := uc.userRepo.GetByDiscordID(ctx, discordID, guildID)
+		// Look up registered users
+		users, err := uc.userRepo.GetByDiscordID(ctx, discordID, guildID)
 		if err != nil {
 			return nil, fmt.Errorf("lookup user: %w", err)
 		}
-		if user == nil {
+		if len(users) == 0 {
 			return nil, fmt.Errorf("bạn chưa đăng ký. Dùng `/register` để đăng ký hoặc nhập username trực tiếp")
 		}
-		username = user.LeetCodeUsername
+		username = users[0].LeetCodeUsername
 	}
 
 	stats, err := uc.lc.GetUserProfile(ctx, username)

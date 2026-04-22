@@ -34,9 +34,9 @@ func (r *UserRepository) Create(ctx context.Context, user *entity.User) error {
 	return nil
 }
 
-func (r *UserRepository) Delete(ctx context.Context, discordID, guildID string) error {
-	query := `DELETE FROM users WHERE discord_id = ? AND guild_id = ?`
-	result, err := r.db.ExecContext(ctx, query, discordID, guildID)
+func (r *UserRepository) DeleteByUsername(ctx context.Context, leetcodeUsername, guildID string) error {
+	query := `DELETE FROM users WHERE leetcode_username = ? AND guild_id = ?`
+	result, err := r.db.ExecContext(ctx, query, leetcodeUsername, guildID)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -52,9 +52,29 @@ func (r *UserRepository) Delete(ctx context.Context, discordID, guildID string) 
 	return nil
 }
 
-func (r *UserRepository) GetByDiscordID(ctx context.Context, discordID, guildID string) (*entity.User, error) {
+func (r *UserRepository) GetByDiscordID(ctx context.Context, discordID, guildID string) ([]*entity.User, error) {
 	query := `SELECT id, discord_id, guild_id, leetcode_username, created_at FROM users WHERE discord_id = ? AND guild_id = ?`
-	row := r.db.QueryRowContext(ctx, query, discordID, guildID)
+	rows, err := r.db.QueryContext(ctx, query, discordID, guildID)
+	if err != nil {
+		return nil, fmt.Errorf("query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*entity.User
+	for rows.Next() {
+		var user entity.User
+		if err := rows.Scan(&user.ID, &user.DiscordID, &user.GuildID, &user.LeetCodeUsername, &user.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, &user)
+	}
+
+	return users, rows.Err()
+}
+
+func (r *UserRepository) GetByLeetCodeUsername(ctx context.Context, leetcodeUsername, guildID string) (*entity.User, error) {
+	query := `SELECT id, discord_id, guild_id, leetcode_username, created_at FROM users WHERE leetcode_username = ? AND guild_id = ?`
+	row := r.db.QueryRowContext(ctx, query, leetcodeUsername, guildID)
 
 	var user entity.User
 	if err := row.Scan(&user.ID, &user.DiscordID, &user.GuildID, &user.LeetCodeUsername, &user.CreatedAt); err != nil {

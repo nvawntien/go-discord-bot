@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     guild_id TEXT NOT NULL,
     leetcode_username TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(discord_id, guild_id)
+    UNIQUE(discord_id, guild_id),
+    UNIQUE(leetcode_username, guild_id)
 );
 
 CREATE TABLE IF NOT EXISTS guild_configs (

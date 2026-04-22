@@ -22,15 +22,25 @@ func NewUnregisterUserUseCase(userRepo outbound.UserRepository, logger *slog.Log
 	}
 }
 
-// Unregister removes a user's registration.
+// Unregister removes the calling Discord user's registration.
 func (uc *UnregisterUserUseCase) Unregister(ctx context.Context, discordID, guildID string) error {
-	if err := uc.userRepo.Delete(ctx, discordID, guildID); err != nil {
+	// Check if user is registered
+	existing, err := uc.userRepo.GetByDiscordID(ctx, discordID, guildID)
+	if err != nil {
+		return fmt.Errorf("lookup user: %w", err)
+	}
+	if len(existing) == 0 {
 		return fmt.Errorf("bạn chưa đăng ký. Dùng `/register` để đăng ký")
+	}
+
+	if err := uc.userRepo.DeleteByUsername(ctx, existing[0].LeetCodeUsername, guildID); err != nil {
+		return fmt.Errorf("unregister: %w", err)
 	}
 
 	uc.logger.Info("User unregistered",
 		"discord_id", discordID,
 		"guild_id", guildID,
+		"leetcode_username", existing[0].LeetCodeUsername,
 	)
 
 	return nil

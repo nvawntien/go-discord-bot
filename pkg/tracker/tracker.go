@@ -25,6 +25,7 @@ type Tracker struct {
 	lc         outbound.LeetCodeClient
 	interval   time.Duration
 	logger     *slog.Logger
+	lastDate   string // Track current date to detect day change
 }
 
 // NewTracker creates a new background daily tracker.
@@ -71,8 +72,6 @@ func (t *Tracker) Start(ctx context.Context) {
 
 // poll performs a single check cycle for all registered users.
 func (t *Tracker) poll(ctx context.Context) {
-	t.logger.Debug("Starting poll cycle")
-
 	// 1. Fetch today's daily question
 	daily, err := t.lc.GetDailyQuestion(ctx)
 	if err != nil {
@@ -80,13 +79,20 @@ func (t *Tracker) poll(ctx context.Context) {
 		return
 	}
 
-	t.logger.Debug("Daily question fetched",
-		"title", daily.Title,
-		"slug", daily.TitleSlug,
-		"date", daily.Date,
+	t.logger.Info("Poll cycle",
+		"daily_title", daily.Title,
+		"daily_slug", daily.TitleSlug,
+		"daily_date", daily.Date,
 	)
 
-	// 2. Get all registered users
+	// 2. Check if day changed — auto-post daily question to all guilds
+	if daily.Date != t.lastDate {
+		t.logger.Info("New day detected, posting daily question", "date", daily.Date)
+		t.broadcastDailyQuestion(daily)
+		t.lastDate = daily.Date
+	}
+
+	// 3. Get all registered users
 	users, err := t.userRepo.GetAll(ctx)
 	if err != nil {
 		t.logger.Error("Failed to fetch users", "error", err)
@@ -94,10 +100,11 @@ func (t *Tracker) poll(ctx context.Context) {
 	}
 
 	if len(users) == 0 {
+		t.logger.Info("No registered users to check")
 		return
 	}
 
-	// 3. Check each user concurrently with a semaphore
+	// 4. Check each user concurrently with a semaphore
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 
@@ -113,7 +120,46 @@ func (t *Tracker) poll(ctx context.Context) {
 	}
 
 	wg.Wait()
-	t.logger.Debug("Poll cycle complete", "users_checked", len(users))
+	t.logger.Info("Poll cycle complete", "users_checked", len(users))
+}
+
+// broadcastDailyQuestion sends the daily question to all guilds that have a notification channel set.
+func (t *Tracker) broadcastDailyQuestion(daily *entity.DailyQuestion) {
+	// Get all unique guild IDs from registered users
+	users, err := t.userRepo.GetAll(context.Background())
+	if err != nil {
+		t.logger.Error("Failed to fetch users for broadcast", "error", err)
+		return
+	}
+
+	// Deduplicate guild IDs
+	guildsSeen := make(map[string]bool)
+	for _, user := range users {
+		if guildsSeen[user.GuildID] {
+			continue
+		}
+		guildsSeen[user.GuildID] = true
+
+		channelID, err := t.configRepo.GetNotificationChannel(context.Background(), user.GuildID)
+		if err != nil || channelID == "" {
+			continue
+		}
+
+		embed := buildDailyQuestionEmbed(daily)
+		_, err = t.session.ChannelMessageSendEmbed(channelID, embed)
+		if err != nil {
+			t.logger.Error("Failed to broadcast daily question",
+				"guild_id", user.GuildID,
+				"error", err,
+			)
+			continue
+		}
+
+		t.logger.Info("Daily question broadcasted",
+			"guild_id", user.GuildID,
+			"question", daily.Title,
+		)
+	}
 }
 
 // checkUser checks if a single user has completed the daily challenge and sends a notification if so.
@@ -141,11 +187,21 @@ func (t *Tracker) checkUser(ctx context.Context, user *entity.User, daily *entit
 		return
 	}
 
+	t.logger.Info("Checking user submissions",
+		"user", user.LeetCodeUsername,
+		"daily_slug", daily.TitleSlug,
+		"recent_submissions_count", len(submissions),
+	)
+
 	// Check if the daily question is in the recent submissions
 	solved := false
 	for _, sub := range submissions {
 		if sub.TitleSlug == daily.TitleSlug {
 			solved = true
+			t.logger.Info("Daily question SOLVED!",
+				"user", user.LeetCodeUsername,
+				"question", daily.Title,
+			)
 			break
 		}
 	}
@@ -154,7 +210,12 @@ func (t *Tracker) checkUser(ctx context.Context, user *entity.User, daily *entit
 		return
 	}
 
-	// Mark as completed
+	// Send notification first — only mark completed if notification succeeds
+	if !t.notifyCompletion(user, daily) {
+		return
+	}
+
+	// Mark as completed only after successful notification
 	completion := &entity.DailyCompletion{
 		UserID:       user.ID,
 		Date:         daily.Date,
@@ -166,21 +227,18 @@ func (t *Tracker) checkUser(ctx context.Context, user *entity.User, daily *entit
 			"user", user.LeetCodeUsername,
 			"error", err,
 		)
-		return
 	}
-
-	// Send notification
-	t.notify(user, daily)
 }
 
-// notify sends a Discord embed notification for a daily challenge completion.
-func (t *Tracker) notify(user *entity.User, daily *entity.DailyQuestion) {
+// notifyCompletion sends a Discord embed notification for a daily challenge completion.
+// Returns true if the notification was sent successfully.
+func (t *Tracker) notifyCompletion(user *entity.User, daily *entity.DailyQuestion) bool {
 	channelID, err := t.configRepo.GetNotificationChannel(context.Background(), user.GuildID)
 	if err != nil || channelID == "" {
 		t.logger.Warn("No notification channel set for guild",
 			"guild_id", user.GuildID,
 		)
-		return
+		return false
 	}
 
 	color := 0x00D166 // Green (Easy)
@@ -229,17 +287,59 @@ func (t *Tracker) notify(user *entity.User, daily *entity.DailyQuestion) {
 
 	_, err = t.session.ChannelMessageSendEmbed(channelID, embed)
 	if err != nil {
-		t.logger.Error("Failed to send notification",
+		t.logger.Error("Failed to send completion notification",
 			"channel_id", channelID,
 			"user", user.LeetCodeUsername,
 			"error", err,
 		)
-		return
+		return false
 	}
 
-	t.logger.Info("Notification sent",
+	t.logger.Info("Completion notification sent",
 		"user", user.LeetCodeUsername,
 		"question", daily.Title,
 		"guild_id", user.GuildID,
 	)
+
+	return true
+}
+
+// buildDailyQuestionEmbed creates a rich embed for the daily challenge auto-post.
+func buildDailyQuestionEmbed(q *entity.DailyQuestion) *discordgo.MessageEmbed {
+	color := 0x00D166 // Green (Easy)
+	diffEmoji := "🟢"
+	switch q.Difficulty {
+	case "Medium":
+		color = 0xFEE75C
+		diffEmoji = "🟡"
+	case "Hard":
+		color = 0xED4245
+		diffEmoji = "🔴"
+	}
+
+	tags := "None"
+	if len(q.TopicTags) > 0 {
+		tags = strings.Join(q.TopicTags, ", ")
+	}
+
+	return &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("📅 Daily Challenge — %s", q.Date),
+		Description: fmt.Sprintf("**[%s. %s](%s)**\n\nHãy giải bài này hôm nay! Bot sẽ tự động thông báo khi bạn hoàn thành. 💪", q.QuestionID, q.Title, q.Link),
+		Color:       color,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Difficulty",
+				Value:  fmt.Sprintf("%s %s", diffEmoji, q.Difficulty),
+				Inline: true,
+			},
+			{
+				Name:   "Topics",
+				Value:  tags,
+				Inline: true,
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "LeetCode Daily Challenge",
+		},
+	}
 }

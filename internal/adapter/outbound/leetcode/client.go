@@ -84,11 +84,17 @@ func (c *Client) GetUserProfile(ctx context.Context, username string) (*entity.U
 		return nil, fmt.Errorf("fetch user profile: %w", err)
 	}
 
-	user := resp.Data.MatchedUser
-	if user.Username == "" {
+	// Check for GraphQL errors (e.g. user not found)
+	if len(resp.Errors) > 0 {
 		return nil, fmt.Errorf("user %q not found on LeetCode", username)
 	}
 
+	// MatchedUser is nil when the username doesn't exist
+	if resp.Data.MatchedUser == nil {
+		return nil, fmt.Errorf("user %q not found on LeetCode", username)
+	}
+
+	user := resp.Data.MatchedUser
 	stats := &entity.UserStats{
 		Username: user.Username,
 		RealName: user.Profile.RealName,

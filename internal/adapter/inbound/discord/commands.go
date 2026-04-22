@@ -18,7 +18,7 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:        "unregister",
-		Description: "Hủy đăng ký khỏi bot",
+		Description: "Hủy đăng ký LeetCode username của bạn khỏi bot",
 	},
 	{
 		Name:        "stats",
