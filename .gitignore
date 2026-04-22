@@ -1,0 +1,15 @@
+# Data files
+data/
+*.db
+
+# Environment
+.env
+
+# Binary
+bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
