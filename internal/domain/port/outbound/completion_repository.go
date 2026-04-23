@@ -10,4 +10,5 @@ import (
 type CompletionRepository interface {
 	HasCompleted(ctx context.Context, userID int64, date string) (bool, error)
 	MarkCompleted(ctx context.Context, completion *entity.DailyCompletion) error
+	GetStreakByUserIDs(ctx context.Context, userIDs []int64) (map[int64]int, error)
 }

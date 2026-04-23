@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/tien/go-discord-bot/internal/domain/entity"
 )
@@ -38,4 +40,70 @@ func (r *CompletionRepository) MarkCompleted(ctx context.Context, completion *en
 	}
 
 	return nil
+}
+
+func (r *CompletionRepository) GetStreakByUserIDs(ctx context.Context, userIDs []int64) (map[int64]int, error) {
+	if len(userIDs) == 0 {
+		return map[int64]int{}, nil
+	}
+
+	// Build IN clause placeholders
+	placeholders := make([]string, len(userIDs))
+	args := make([]any, len(userIDs))
+	for i, id := range userIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	// Fetch all completion dates per user, sorted descending
+	query := fmt.Sprintf(
+		`SELECT user_id, date FROM daily_completions WHERE user_id IN (%s) ORDER BY user_id, date DESC`,
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch completions: %w", err)
+	}
+	defer rows.Close()
+
+	// Group dates by user
+	userDates := make(map[int64][]string)
+	for rows.Next() {
+		var userID int64
+		var date string
+		if err := rows.Scan(&userID, &date); err != nil {
+			return nil, fmt.Errorf("scan completion: %w", err)
+		}
+		userDates[userID] = append(userDates[userID], date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Calculate streak for each user
+	today := time.Now().Format("2006-01-02")
+	streaks := make(map[int64]int)
+
+	for userID, dates := range userDates {
+		streak := 0
+		expected := today
+
+		for _, date := range dates {
+			if date == expected {
+				streak++
+				// Move expected to previous day
+				t, _ := time.Parse("2006-01-02", expected)
+				expected = t.AddDate(0, 0, -1).Format("2006-01-02")
+			} else if date < expected {
+				// Gap found — streak is broken
+				break
+			}
+			// If date > expected, skip (shouldn't happen with DESC sort)
+		}
+
+		streaks[userID] = streak
+	}
+
+	return streaks, nil
 }

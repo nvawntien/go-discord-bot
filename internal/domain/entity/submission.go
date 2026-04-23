@@ -22,11 +22,13 @@ type DailyCompletion struct {
 
 // UserStats holds aggregated LeetCode profile statistics.
 type UserStats struct {
-	Username    string
-	RealName    string
-	Ranking     int
-	TotalSolved int
-	EasySolved  int
-	MediumSolved int
-	HardSolved  int
+	Username        string
+	RealName        string
+	Ranking         int
+	TotalSolved     int
+	EasySolved      int
+	MediumSolved    int
+	HardSolved      int
+	Streak          int
+	TotalActiveDays int
 }

@@ -34,6 +34,10 @@ query getUserProfile($username: String!) {
         count
       }
     }
+    userCalendar {
+      streak
+      totalActiveDays
+    }
   }
 }
 `

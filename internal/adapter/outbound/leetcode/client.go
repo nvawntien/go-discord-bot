@@ -96,9 +96,11 @@ func (c *Client) GetUserProfile(ctx context.Context, username string) (*entity.U
 
 	user := resp.Data.MatchedUser
 	stats := &entity.UserStats{
-		Username: user.Username,
-		RealName: user.Profile.RealName,
-		Ranking:  user.Profile.Ranking,
+		Username:        user.Username,
+		RealName:        user.Profile.RealName,
+		Ranking:         user.Profile.Ranking,
+		Streak:          user.UserCalendar.Streak,
+		TotalActiveDays: user.UserCalendar.TotalActiveDays,
 	}
 
 	for _, s := range user.SubmitStatsGlobal.ACSubmissionNum {

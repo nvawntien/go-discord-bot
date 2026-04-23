@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -324,22 +325,45 @@ func buildDailyEmbed(q *entity.DailyQuestion) *discordgo.MessageEmbed {
 	}
 }
 
-// buildLeaderboardEmbed creates a rich embed for the leaderboard.
+// buildLeaderboardEmbed creates a rich embed with two rankings.
 func buildLeaderboardEmbed(entries []application.LeaderboardEntry) *discordgo.MessageEmbed {
-	var sb strings.Builder
-
 	medals := []string{"🥇", "🥈", "🥉"}
 
-	for i, entry := range entries {
-		medal := fmt.Sprintf("`#%d`", i+1)
+	getMedal := func(i int) string {
 		if i < len(medals) {
-			medal = medals[i]
+			return medals[i]
 		}
+		return fmt.Sprintf("`#%d`", i+1)
+	}
 
-		sb.WriteString(fmt.Sprintf(
-			"%s **%s** (<@%s>)\n┗ 📝 %d solved ┃ 🟢 %d ┃ 🟡 %d ┃ 🔴 %d\n\n",
-			medal,
-			entry.LeetCodeUsername,
+	// --- Section 1: Daily Streak (sorted by streak) ---
+	dailySorted := make([]application.LeaderboardEntry, len(entries))
+	copy(dailySorted, entries)
+	sort.Slice(dailySorted, func(i, j int) bool {
+		return dailySorted[i].Stats.Streak > dailySorted[j].Stats.Streak
+	})
+
+	var dailySB strings.Builder
+	for i, entry := range dailySorted {
+		streakEmoji := ""
+		if entry.Stats.Streak >= 7 {
+			streakEmoji = " 🔥"
+		}
+		dailySB.WriteString(fmt.Sprintf(
+			"%s <@%s> — **%d ngày** liên tiếp%s\n",
+			getMedal(i),
+			entry.DiscordID,
+			entry.Stats.Streak,
+			streakEmoji,
+		))
+	}
+
+	// --- Section 2: Total Solved (already sorted by total) ---
+	var totalSB strings.Builder
+	for i, entry := range entries {
+		totalSB.WriteString(fmt.Sprintf(
+			"%s <@%s> — **%d** solved (🟢%d 🟡%d 🔴%d)\n",
+			getMedal(i),
 			entry.DiscordID,
 			entry.Stats.TotalSolved,
 			entry.Stats.EasySolved,
@@ -349,11 +373,20 @@ func buildLeaderboardEmbed(entries []application.LeaderboardEntry) *discordgo.Me
 	}
 
 	return &discordgo.MessageEmbed{
-		Title:       "🏆 Leaderboard",
-		Description: sb.String(),
-		Color:       0xFFA116, // LeetCode orange
+		Title: "🏆 Leaderboard",
+		Color: 0xFFA116, // LeetCode orange
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:  "📅 Daily Challenge Streak",
+				Value: dailySB.String(),
+			},
+			{
+				Name:  "📝 Total Problems Solved",
+				Value: totalSB.String(),
+			},
+		},
 		Footer: &discordgo.MessageEmbedFooter{
-			Text: fmt.Sprintf("Tổng %d thành viên • Xếp theo Total Solved", len(entries)),
+			Text: fmt.Sprintf("Tổng %d thành viên", len(entries)),
 		},
 	}
 }

@@ -36,6 +36,10 @@ type userProfileResponse struct {
 					Count      int    `json:"count"`
 				} `json:"acSubmissionNum"`
 			} `json:"submitStatsGlobal"`
+			UserCalendar struct {
+				Streak          int `json:"streak"`
+				TotalActiveDays int `json:"totalActiveDays"`
+			} `json:"userCalendar"`
 		} `json:"matchedUser"`
 	} `json:"data"`
 	Errors []struct {
