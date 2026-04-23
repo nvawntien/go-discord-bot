@@ -41,6 +41,10 @@ var commands = []*discordgo.ApplicationCommand{
 		Description:              "Set channel hiện tại nhận thông báo daily (Admin only)",
 		DefaultMemberPermissions: permPtr(discordgo.PermissionAdministrator),
 	},
+	{
+		Name:        "leaderboard",
+		Description: "Xem bảng xếp hạng LeetCode trong server",
+	},
 }
 
 // permPtr returns a pointer to an int64, used for DefaultMemberPermissions.

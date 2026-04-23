@@ -4,6 +4,7 @@ import "time"
 
 // Submission represents a single accepted submission from LeetCode.
 type Submission struct {
+	ID        string
 	Title     string
 	TitleSlug string
 	Timestamp int64 // Unix timestamp

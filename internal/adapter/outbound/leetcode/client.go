@@ -136,6 +136,7 @@ func (c *Client) GetRecentAcceptedSubmissions(ctx context.Context, username stri
 	for _, s := range resp.Data.RecentACSubmissionList {
 		ts, _ := strconv.ParseInt(s.Timestamp, 10, 64)
 		submissions = append(submissions, entity.Submission{
+			ID:        s.ID,
 			Title:     s.Title,
 			TitleSlug: s.TitleSlug,
 			Timestamp: ts,

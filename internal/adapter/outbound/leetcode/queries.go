@@ -41,6 +41,7 @@ query getUserProfile($username: String!) {
 const queryRecentACSubmissions = `
 query recentAcSubmissions($username: String!, $limit: Int!) {
   recentAcSubmissionList(username: $username, limit: $limit) {
+    id
     title
     titleSlug
     timestamp

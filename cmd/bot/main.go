@@ -80,10 +80,11 @@ func main() {
 	statsUC := application.NewGetStatsUseCase(userRepo, lcClient, logger)
 	dailyUC := application.NewGetDailyUseCase(lcClient)
 	setChannelUC := application.NewSetChannelUseCase(configRepo, logger)
+	leaderboardUC := application.NewGetLeaderboardUseCase(userRepo, lcClient, logger)
 
 	// --- Initialize inbound adapter (Discord bot) ---
 
-	handler := discord.NewHandler(registerUC, unregisterUC, statsUC, dailyUC, setChannelUC, logger)
+	handler := discord.NewHandler(registerUC, unregisterUC, statsUC, dailyUC, setChannelUC, leaderboardUC, logger)
 
 	bot, err := discord.NewBot(botToken, appID, handler, logger)
 	if err != nil {

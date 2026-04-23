@@ -1,70 +1,45 @@
 package main
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
-	"log/slog"
-	"os"
+	"log"
 
-	"github.com/tien/go-discord-bot/internal/adapter/outbound/leetcode"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	client := leetcode.NewClient(logger)
-	ctx := context.Background()
-
-	// 1. Fetch daily question
-	fmt.Println("=== DAILY QUESTION ===")
-	daily, err := client.GetDailyQuestion(ctx)
+	db, err := sql.Open("sqlite", "./data/bot.db")
 	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		return
+		log.Fatal(err)
 	}
-	fmt.Printf("Date: %s\n", daily.Date)
-	fmt.Printf("Title: %s\n", daily.Title)
-	fmt.Printf("TitleSlug: %q\n", daily.TitleSlug)
-	fmt.Printf("Link: %s\n", daily.Link)
-	fmt.Printf("Difficulty: %s\n", daily.Difficulty)
+	defer db.Close()
 
-	// 2. Fetch recent submissions for vantien0105
-	fmt.Println("\n=== RECENT SUBMISSIONS (vantien0105) ===")
-	subs, err := client.GetRecentAcceptedSubmissions(ctx, "vantien0105", 20)
+	fmt.Println("=== USERS ===")
+	rows, err := db.Query("SELECT id, discord_id, guild_id, leetcode_username FROM users")
 	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		return
+		log.Fatal(err)
 	}
-	fmt.Printf("Total recent submissions: %d\n", len(subs))
-	for i, s := range subs {
-		match := ""
-		if s.TitleSlug == daily.TitleSlug {
-			match = " <<<< MATCH DAILY!"
-		}
-		fmt.Printf("  [%d] %q (slug: %q)%s\n", i, s.Title, s.TitleSlug, match)
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var discordID, guildID, lcUser string
+		rows.Scan(&id, &discordID, &guildID, &lcUser)
+		fmt.Printf("  id=%d discord=%s guild=%s lc=%s\n", id, discordID, guildID, lcUser)
 	}
 
-	// 3. Check match
-	fmt.Println("\n=== RESULT ===")
-	found := false
-	for _, s := range subs {
-		if s.TitleSlug == daily.TitleSlug {
-			found = true
-			break
-		}
-	}
-	if found {
-		fmt.Println("✅ User HAS solved today's daily question!")
-	} else {
-		fmt.Println("❌ User has NOT solved today's daily question.")
-		fmt.Printf("Looking for slug: %q\n", daily.TitleSlug)
-	}
-
-	// 4. Test non-existent user
-	fmt.Println("\n=== TEST NON-EXISTENT USER ===")
-	_, err = client.GetUserProfile(ctx, "thisuserdoesnotexist12345xyz")
+	fmt.Println("\n=== DAILY COMPLETIONS ===")
+	rows2, err := db.Query("SELECT id, user_id, date, question_slug FROM daily_completions")
 	if err != nil {
-		fmt.Printf("✅ Correctly returned error: %v\n", err)
-	} else {
-		fmt.Println("❌ BUG: Should have returned error for non-existent user!")
+		log.Fatal(err)
+	}
+	defer rows2.Close()
+
+	for rows2.Next() {
+		var id, userID int64
+		var date, slug string
+		rows2.Scan(&id, &userID, &date, &slug)
+		fmt.Printf("  id=%d user_id=%d date=%s slug=%s\n", id, userID, date, slug)
 	}
 }

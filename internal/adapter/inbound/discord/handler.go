@@ -13,12 +13,13 @@ import (
 
 // Handler routes Discord interactions to the appropriate use case.
 type Handler struct {
-	registerUC   *application.RegisterUserUseCase
-	unregisterUC *application.UnregisterUserUseCase
-	statsUC      *application.GetStatsUseCase
-	dailyUC      *application.GetDailyUseCase
-	setChannelUC *application.SetChannelUseCase
-	logger       *slog.Logger
+	registerUC    *application.RegisterUserUseCase
+	unregisterUC  *application.UnregisterUserUseCase
+	statsUC       *application.GetStatsUseCase
+	dailyUC       *application.GetDailyUseCase
+	setChannelUC  *application.SetChannelUseCase
+	leaderboardUC *application.GetLeaderboardUseCase
+	logger        *slog.Logger
 }
 
 // NewHandler creates a new interaction handler.
@@ -28,15 +29,17 @@ func NewHandler(
 	statsUC *application.GetStatsUseCase,
 	dailyUC *application.GetDailyUseCase,
 	setChannelUC *application.SetChannelUseCase,
+	leaderboardUC *application.GetLeaderboardUseCase,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		registerUC:   registerUC,
-		unregisterUC: unregisterUC,
-		statsUC:      statsUC,
-		dailyUC:      dailyUC,
-		setChannelUC: setChannelUC,
-		logger:       logger,
+		registerUC:    registerUC,
+		unregisterUC:  unregisterUC,
+		statsUC:       statsUC,
+		dailyUC:       dailyUC,
+		setChannelUC:  setChannelUC,
+		leaderboardUC: leaderboardUC,
+		logger:        logger,
 	}
 }
 
@@ -60,6 +63,8 @@ func (h *Handler) OnInteraction(s *discordgo.Session, i *discordgo.InteractionCr
 		h.handleDaily(ctx, s, i)
 	case "setchannel":
 		h.handleSetChannel(ctx, s, i)
+	case "leaderboard":
+		h.handleLeaderboard(ctx, s, i)
 	}
 }
 
@@ -181,6 +186,26 @@ func (h *Handler) handleSetChannel(ctx context.Context, s *discordgo.Session, i 
 	})
 }
 
+func (h *Handler) handleLeaderboard(ctx context.Context, s *discordgo.Session, i *discordgo.InteractionCreate) {
+	guildID := i.GuildID
+
+	// Defer since multiple API calls needed
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+
+	entries, err := h.leaderboardUC.GetLeaderboard(ctx, guildID)
+	if err != nil {
+		h.editErrorResponse(s, i, err.Error())
+		return
+	}
+
+	embed := buildLeaderboardEmbed(entries)
+	_, _ = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
+	})
+}
+
 // respondError sends an ephemeral error response.
 func (h *Handler) respondError(s *discordgo.Session, i *discordgo.InteractionCreate, msg string) {
 	embed := &discordgo.MessageEmbed{
@@ -295,6 +320,40 @@ func buildDailyEmbed(q *entity.DailyQuestion) *discordgo.MessageEmbed {
 		},
 		Footer: &discordgo.MessageEmbedFooter{
 			Text: "Dùng /register để bot theo dõi tiến độ của bạn!",
+		},
+	}
+}
+
+// buildLeaderboardEmbed creates a rich embed for the leaderboard.
+func buildLeaderboardEmbed(entries []application.LeaderboardEntry) *discordgo.MessageEmbed {
+	var sb strings.Builder
+
+	medals := []string{"🥇", "🥈", "🥉"}
+
+	for i, entry := range entries {
+		medal := fmt.Sprintf("`#%d`", i+1)
+		if i < len(medals) {
+			medal = medals[i]
+		}
+
+		sb.WriteString(fmt.Sprintf(
+			"%s **%s** (<@%s>)\n┗ 📝 %d solved ┃ 🟢 %d ┃ 🟡 %d ┃ 🔴 %d\n\n",
+			medal,
+			entry.LeetCodeUsername,
+			entry.DiscordID,
+			entry.Stats.TotalSolved,
+			entry.Stats.EasySolved,
+			entry.Stats.MediumSolved,
+			entry.Stats.HardSolved,
+		))
+	}
+
+	return &discordgo.MessageEmbed{
+		Title:       "🏆 Leaderboard",
+		Description: sb.String(),
+		Color:       0xFFA116, // LeetCode orange
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("Tổng %d thành viên • Xếp theo Total Solved", len(entries)),
 		},
 	}
 }
